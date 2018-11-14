@@ -984,6 +984,43 @@ class _TestQueue(BaseTestCase):
         self.assertEqual(q.qsize(), 0)
         close_queue(q)
 
+    def test_feeder_process_exception_before_process_exit(self):
+        queue = multiprocessing.Queue()
+        is_finished = multiprocessing.Event()
+        pipe_r, pipe_w = multiprocessing.Pipe(False)
+        proc = self.Process(
+            target=self._test_feeder_process_exception_before_process_exit,
+            args=(queue, is_finished, pipe_w)
+        )
+        proc.start()
+        is_finished.wait()
+
+        if hasattr(queue, "qsize"):
+            self.assertEqual(queue.qsize(), 0)
+        self.assertEqual(queue.empty(), True)
+
+        traceback_lines = ""
+        while (pipe_r.poll(DELTA)):
+            traceback_lines += pipe_r.recv()
+        self.assertIn("raise RuntimeError('cannot pickle')", traceback_lines)
+        proc.join()
+
+    @classmethod
+    def _test_feeder_process_exception_before_process_exit(cls, queue, is_finished_event, pipe):
+        class StderrToPipe:
+            def write(self, data):
+                pipe.send(data)
+            def flush(self):
+                ...
+        setattr(sys, "stderr", StderrToPipe())
+
+        class NotPickable(object):
+            def __reduce__(self):
+                raise RuntimeError('cannot pickle')
+
+        queue.put(NotPickable())
+        is_finished_event.set()
+
     @classmethod
     def _test_task_done(cls, q):
         for obj in iter(q.get, None):
