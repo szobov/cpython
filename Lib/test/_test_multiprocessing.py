@@ -995,14 +995,20 @@ class _TestQueue(BaseTestCase):
         proc.start()
         is_finished.wait()
 
-        if hasattr(queue, "qsize"):
-            self.assertEqual(queue.qsize(), 0)
-        self.assertEqual(queue.empty(), True)
+        # Sleep to make sure that we already synchronized queue's underlying thread
+        time.sleep(DELTA)
 
+        # Let's check that exception was raised and shown to user
         traceback_lines = ""
         while (pipe_r.poll(DELTA)):
             traceback_lines += pipe_r.recv()
         self.assertIn("raise RuntimeError('cannot pickle')", traceback_lines)
+
+        # Here is should be no elements in queue, because we put an unpickable object
+        if hasattr(queue, "qsize"):
+            self.assertEqual(queue.qsize(), 0)
+        self.assertEqual(queue.empty(), True)
+
         proc.join()
 
     @classmethod
